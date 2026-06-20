@@ -247,17 +247,17 @@ pub fn main(init: std.process.Init) !void {
     //halt
     
     const code = [_]Op{
-        .{.load   =.{ .dst  =0,      .lhs=INT(1)              }},
-        .{.load   =.{ .dst  =1,      .lhs=INT(0)              }},
-        .{.load   =.{ .dst  =2,      .lhs=INT(1)              }},
-        .{.add    =.{ .dst  =3,      .lhs=REG(1), .rhs=REG(2) }},
-        .{.load   =.{ .dst  =1,      .lhs=REG(2)              }},
-        .{.load   =.{ .dst  =2,      .lhs=REG(3)              }},
-        .{.add    =.{ .dst  =0,      .lhs=REG(0), .rhs=INT(1) }},
-        .{.lt     =.{ .dst  =4,      .lhs=REG(0), .rhs=INT(46)}}, //solving for 90th fibonacci
-        .{.jumpif =.{ .lhs  =REG(4), .line=3                  }},
-        .{.print            =REG(2)                           },
-        .{.halt             ={}                               }
+        .{.load   =.{ .dst  =0,      .lhs=INT(1)                      }},
+        .{.load   =.{ .dst  =1,      .lhs=INT(0)                      }},
+        .{.load   =.{ .dst  =2,      .lhs=INT(1)                      }},
+        .{.add    =.{ .dst  =3,      .lhs=REG(1), .rhs=REG(2)         }},
+        .{.load   =.{ .dst  =1,      .lhs=REG(2)                      }},
+        .{.load   =.{ .dst  =2,      .lhs=REG(3)                      }},
+        .{.add    =.{ .dst  =0,      .lhs=REG(0), .rhs=INT(1)         }},
+        .{.lt     =.{ .dst  =4,      .lhs=REG(0), .rhs=INT(fib_number)}},
+        .{.jumpif =.{ .lhs  =REG(4), .line=3                          }},
+        .{.print            =REG(2)                                   },
+        .{.halt             ={}                                       }
     };
     
     try stdout.print("VM: Computing Fibonacci #{d}...\n", .{fib_number});
