@@ -1,6 +1,7 @@
 //this VM is currently configured to calculate fibonacci numbers
 //modify the number below and run the code!
 const fib_number = 46;
+const benchmarking_mode = true;
 
 //--------------------------------------------------------------
 const std = @import("std");
@@ -12,25 +13,22 @@ const Value = union(enum) {
     nan: void
 };
 
-const Arg = union(enum) {
-    val: Value,
-    reg: usize
+const ArgKind = enum(u1) {
+    register,
+    constant
+};
+
+const Arg = struct {
+    kind: ArgKind,
+    index: usize
 };
 
 pub fn REG(i: usize) Arg {
-    return Arg{.reg=i};
+    return Arg{.kind=.register, .index=i};
 }
 
-pub fn INT(i: i32) Arg {
-    return Arg{.val=Value{.int=i}};
-}
-
-pub fn BOOL(i: bool) Arg {
-    return Arg{.val=Value{.boolean=i}};
-}
-
-pub fn FLOAT(i: f32) Arg {
-    return Arg{.val=Value{.float=i}};
+pub fn CONST(i: usize) Arg {
+    return Arg{.kind=.constant, .index=i};
 }
 
 const Op = union(enum) {
@@ -104,13 +102,15 @@ fn neq_op(a: Value, b: Value) Value { return Value{.boolean=(!std.meta.eql(a, b)
 
 const VirtualMachine = struct {
     mem: [256]Value,
+    constants_pool: []const Value,
     program: []const Op,
     ic: usize,
 
-    pub fn build(program: []const Op) VirtualMachine {
+    pub fn build(program: []const Op, const_pool: []const Value) VirtualMachine {
         return VirtualMachine {
             .mem = [_]Value{ Value{.nan={}} } ** 256,
             .program = program,
+            .constants_pool = const_pool,
             .ic = 0
         };
     }
@@ -149,25 +149,30 @@ const VirtualMachine = struct {
     }
 
     fn unwrap(self: *VirtualMachine, a: Arg) Value {
-        switch (a) {
-            .val => |v| { return v; },
-            .reg => |regNo| { return self.mem[@intCast(regNo)]; }
+        if (a.kind == .register) {
+            return self.mem[a.index];
         }
+        return self.constants_pool[a.index];
     }
 
-    pub fn run(self: *VirtualMachine, io: std.Io, stdout: *std.Io.Writer) !void {
-        const start_time = std.Io.Clock.awake.now(io);
+    pub fn run(self: *VirtualMachine, io: std.Io, stdout: *std.Io.Writer, comptime benchmark: bool) !void {
+        
+        var start_time: ?std.Io.Timestamp = null;
 
+        if (!benchmark) { start_time = std.Io.Clock.awake.now(io); }
+
+        self.ic = 0;
         while (self.ic < self.program.len) {
             const c_instruction = self.program[self.ic];
         
             switch (c_instruction) {
                 .print => |data| {
+                    if (benchmark) { self.ic = self.ic + 1; continue; }
                     const arg1 = self.unwrap(data);
                     switch (arg1) {
                         .int => |i| { try stdout.print("{d}", .{i}); },
-                        .boolean => |b| { try stdout.print("{s}", .{ if (b) "True" else "False" }); },
                         .float => |f| { try stdout.print("{d}", .{f}); },
+                        .boolean => |b| { try stdout.print("{s}", .{ if (b) "True" else "False" }); },
                         else => { @panic("unsupported value for printing"); }
                     }
                 },
@@ -207,6 +212,7 @@ const VirtualMachine = struct {
                 },
                 
                 .halt => {
+                    if (benchmark) { return; }
                     try stdout.print("\n[Halted]", .{});
                     self.ic = self.ic + 1;
                     break;
@@ -215,12 +221,14 @@ const VirtualMachine = struct {
             }
             self.ic = self.ic + 1;
         }
-        
+
+        if (benchmark) { return; }
+
         if (self.ic >= self.program.len) {
             try stdout.print("\n[End of Program]", .{});
         }
         
-        const elapsed = start_time.untilNow(io, .awake);
+        const elapsed = start_time.?.untilNow(io, std.Io.Clock.awake);
         try stdout.print("\nExecution finished ({} ns)\n", .{elapsed.toNanoseconds()});
     }
 };
@@ -246,24 +254,46 @@ pub fn main(init: std.process.Init) !void {
     //print   reg(2)
     //halt
     
+    const const_pool = [_]Value{
+        .{.int=0},
+        .{.int=1},
+        .{.int=fib_number}
+    };
+
     const code = [_]Op{
-        .{.load   =.{ .dst  =0,      .lhs=INT(1)                      }},
-        .{.load   =.{ .dst  =1,      .lhs=INT(0)                      }},
-        .{.load   =.{ .dst  =2,      .lhs=INT(1)                      }},
-        .{.add    =.{ .dst  =3,      .lhs=REG(1), .rhs=REG(2)         }},
-        .{.load   =.{ .dst  =1,      .lhs=REG(2)                      }},
-        .{.load   =.{ .dst  =2,      .lhs=REG(3)                      }},
-        .{.add    =.{ .dst  =0,      .lhs=REG(0), .rhs=INT(1)         }},
-        .{.lt     =.{ .dst  =4,      .lhs=REG(0), .rhs=INT(fib_number)}},
-        .{.jumpif =.{ .lhs  =REG(4), .line=3                          }},
-        .{.print            =REG(2)                                   },
-        .{.halt             ={}                                       }
+        .{.load   =.{ .dst  =0,      .lhs=CONST(1)              }},
+        .{.load   =.{ .dst  =1,      .lhs=CONST(0)              }},
+        .{.load   =.{ .dst  =2,      .lhs=CONST(1)              }},
+        .{.add    =.{ .dst  =3,      .lhs=REG(1), .rhs=REG(2)   }},
+        .{.load   =.{ .dst  =1,      .lhs=REG(2)                }},
+        .{.load   =.{ .dst  =2,      .lhs=REG(3)                }},
+        .{.add    =.{ .dst  =0,      .lhs=REG(0), .rhs=CONST(1) }},
+        .{.lt     =.{ .dst  =4,      .lhs=REG(0), .rhs=CONST(2) }},
+        .{.jumpif =.{ .lhs  =REG(4), .line=3                    }},
+        .{.print            =REG(2)                             },
+        .{.halt             ={}                                 }
     };
     
+    var vm = VirtualMachine.build(&code, &const_pool);
     try stdout.print("VM: Computing Fibonacci #{d}...\n", .{fib_number});
-    var vm = VirtualMachine.build(&code);
 
-    try vm.run(io, stdout);
-    
+    if (benchmarking_mode) { 
+        try stdout.print("VM: BENCHMARK - 1mil iters", .{});
+        
+        //warmup
+        for (0..1000) |_| {
+            try vm.run(io, stdout, true);
+        } 
+
+        const start_time = std.Io.Clock.awake.now(io);
+        for (0..1000000) |_| {
+            try vm.run(io, stdout, true);
+        }
+        const elapsed = start_time.untilNow(io, std.Io.Clock.awake);
+        try stdout.print("\nExecution finished ({} ns)\n", .{elapsed.toNanoseconds()}); 
+    }
+    else {
+        try vm.run(io, stdout, false);
+    }
     try stdout.flush();
 }
