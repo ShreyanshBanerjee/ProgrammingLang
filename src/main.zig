@@ -1,7 +1,7 @@
 //this VM is currently configured to calculate fibonacci numbers
 //modify the number below and run the code!
-const fib_number = 46;
-const benchmarking_mode = true;
+const fib_number = 23;
+const benchmarking_mode = false;
 
 //--------------------------------------------------------------
 const std = @import("std");
@@ -9,7 +9,6 @@ const std = @import("std");
 const Value = union(enum) {
     int: i32,
     float: f32,
-    boolean: bool,
     nan: void
 };
 
@@ -65,9 +64,9 @@ const Op = union(enum) {
 };
 
 //behold: wall of boilerplate (but what can you do...)
-fn and_op(a: bool, b: bool) Value { return Value{.boolean=(a and b)}; }
-fn or_op(a: bool, b: bool) Value { return Value{.boolean=(a or b)}; }
-fn xor_op(a: bool, b: bool) Value { return Value{.boolean=(a or b) and !(a and b)}; }
+fn and_op(a: i32, b: i32) Value { return Value{.int=(a & b)}; }
+fn or_op(a: i32, b: i32) Value { return Value{.int=(a | b)}; }
+fn xor_op(a: i32, b: i32) Value { return Value{.int=(a ^ b)}; }
 
 fn add_op_i(a: i32, b: i32) Value { return Value{.int=a+b}; }
 fn add_op_f(a: f32, b: f32) Value { return Value{.float=a+b}; }
@@ -88,17 +87,17 @@ fn pow_op_i(a: i32, b: i32) Value {
 }
 fn pow_op_f(a: f32, b: f32) Value { return Value{.float=std.math.pow(f32, a, b)}; }
 
-fn lt_op_i(a: i32, b: i32) Value { return Value{.boolean=(a<b)}; }
-fn lt_op_f(a: f32, b: f32) Value { return Value{.boolean=(a<b)}; }
-fn gt_op_i(a: i32, b: i32) Value { return Value{.boolean=(a>b)}; }
-fn gt_op_f(a: f32, b: f32) Value { return Value{.boolean=(a>b)}; }
-fn lteq_op_i(a: i32, b: i32) Value { return Value{.boolean=(a<=b)}; }
-fn lteq_op_f(a: f32, b: f32) Value { return Value{.boolean=(a<=b)}; }
-fn gteq_op_i(a: i32, b: i32) Value { return Value{.boolean=(a>=b)}; }
-fn gteq_op_f(a: f32, b: f32) Value { return Value{.boolean=(a>=b)}; }
+fn lt_op_i(a: i32, b: i32) Value { return Value{.int=if (a<b) 1 else 0}; }
+fn lt_op_f(a: f32, b: f32) Value { return Value{.int=if (a<b) 1 else 0}; }
+fn gt_op_i(a: i32, b: i32) Value { return Value{.int=if (a>b) 1 else 0}; }
+fn gt_op_f(a: f32, b: f32) Value { return Value{.int=if (a>b) 1 else 0}; }
+fn lteq_op_i(a: i32, b: i32) Value { return Value{.int=if (a<=b) 1 else 0}; }
+fn lteq_op_f(a: f32, b: f32) Value { return Value{.int=if (a<=b) 1 else 0}; }
+fn gteq_op_i(a: i32, b: i32) Value { return Value{.int=if (a>=b) 1 else 0}; }
+fn gteq_op_f(a: f32, b: f32) Value { return Value{.int=if (a>=b) 1 else 0}; }
 
-fn eqeq_op(a: Value, b: Value) Value { return Value{.boolean=(std.meta.eql(a, b))}; }
-fn neq_op(a: Value, b: Value) Value { return Value{.boolean=(!std.meta.eql(a, b))}; }
+fn eqeq_op(a: Value, b: Value) Value { return Value{.int=if (std.meta.eql(a, b)) 1 else 0}; }
+fn neq_op(a: Value, b: Value) Value { return Value{.int=if (std.meta.eql(a, b)) 0 else 1}; }
 
 const VirtualMachine = struct {
     mem: [256]Value,
@@ -115,15 +114,15 @@ const VirtualMachine = struct {
         };
     }
 
-    fn binary_bool_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f: *const fn(bool, bool) Value) void {
+    fn binary_bool_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f: *const fn(i32, i32) Value) void {
         const arg1 = self.unwrap(a);
         const arg2 = self.unwrap(b);
         
-        if (arg1 != .boolean or arg2 != .boolean) {
-            @panic("expected boolean value");
+        if (arg1 != .int or arg2 != .int) {
+            @panic("expected i32");
         }
 
-        self.mem[dst] = f(arg1.boolean, arg2.boolean);
+        self.mem[dst] = f(arg1.int, arg2.int);
     }
 
     fn binary_numeric_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f_int: *const fn(i32, i32) Value, f_float: *const fn(f32, f32) Value) void {
@@ -172,7 +171,6 @@ const VirtualMachine = struct {
                     switch (arg1) {
                         .int => |i| { try stdout.print("{d}", .{i}); },
                         .float => |f| { try stdout.print("{d}", .{f}); },
-                        .boolean => |b| { try stdout.print("{s}", .{ if (b) "True" else "False" }); },
                         else => { @panic("unsupported value for printing"); }
                     }
                 },
@@ -205,7 +203,7 @@ const VirtualMachine = struct {
                 .jump => |line| { self.ic = line; continue; },
                 .jumpif => |data| {
                     const flag = self.unwrap(data.lhs);
-                    if (flag == .boolean and flag.boolean) {
+                    if (flag == .int and flag.int != 0) {
                         self.ic = data.line;
                         continue;
                     }
