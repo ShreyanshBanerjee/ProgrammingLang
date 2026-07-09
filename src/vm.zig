@@ -10,7 +10,6 @@ const ops = @import("ops.zig");
 
 pub const VirtualMachine = struct {
     mem: [256]Value,
-    heap: [256]Value,
     constants_pool: []const Value,
     program: []const Op,
     ic: usize,

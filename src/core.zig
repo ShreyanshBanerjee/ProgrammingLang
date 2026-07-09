@@ -1,6 +1,7 @@
 pub const Value = union(enum) {
     int: i32,
     float: f32,
+    ptr: usize,
     nan: void
 };
 
@@ -25,8 +26,7 @@ pub fn CONST(i: usize) Arg {
 pub const Op = union(enum) {
     add: struct{ dst: usize, lhs: Arg, rhs: Arg },
     sub: struct{ dst: usize, lhs: Arg, rhs: Arg },
-    mult: struct{ dst: usize, lhs: Arg, rhs: Arg },
-    div: struct{ dst: usize, lhs: Arg, rhs: Arg },
+    mult: struct{ dst: usize, lhs: Arg, rhs: Arg }, div: struct{ dst: usize, lhs: Arg, rhs: Arg },
     
     mod: struct{ dst: usize, lhs: Arg, rhs: Arg },
     pow: struct{ dst: usize, lhs: Arg, rhs: Arg },
@@ -45,12 +45,26 @@ pub const Op = union(enum) {
     gt: struct{ dst: usize, lhs: Arg, rhs: Arg },
     gteq: struct{ dst: usize, lhs: Arg, rhs: Arg },
 
-    load: struct{ dst: usize, lhs: Arg },
+    load: struct{ dst: Arg, lhs: Arg },
+    
+    alloc: struct{ dst: Arg, size: usize},
 
     jump: usize,
     jumpif: struct { lhs: Arg, line: usize },
     
     print: Arg,
     print_ascii: Arg,
+    
     halt: void
+};
+
+ const VMError = error{
+    JumpOutOfBounds,
+    InvalidRegIndex,
+    InvalidConstPoolIndex,
+    UnexpectedToken,
+    
+    OutOfHeapSpace,
+
+    InternalError
 };
