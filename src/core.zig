@@ -58,7 +58,7 @@ pub const Op = union(enum) {
     halt: void
 };
 
- const VMError = error{
+pub const VMError = error{
     JumpOutOfBounds,
     InvalidRegIndex,
     InvalidConstPoolIndex,
