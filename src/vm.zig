@@ -7,9 +7,11 @@ pub const Arg = core.Arg;
 pub const Op = core.Op;
 
 const ops = @import("ops.zig");
+const Heap = @import("heap.zig").Heap;
 
 pub const VirtualMachine = struct {
     mem: [256]Value,
+    heap: Heap,
     constants_pool: []const Value,
     program: []const Op,
     ic: usize,
@@ -17,14 +19,14 @@ pub const VirtualMachine = struct {
     pub fn build(program: []const Op, const_pool: []const Value) VirtualMachine {
         return VirtualMachine {
             .mem = [_]Value{ Value{.nan={}} } ** 256,
-            .heap = [_]Value{ Value{.nan={}} } ** 256,
+            .heap = Heap.build(),
             .program = program,
             .constants_pool = const_pool,
             .ic = 0
         };
     }
 
-    fn binary_bool_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f: *const fn(i32, i32) Value) void {
+    fn binary_bool_op(self: *VirtualMachine, dst: Arg, a: Arg, b: Arg, f: *const fn(i32, i32) Value) void {
         const arg1 = self.unwrap(a);
         const arg2 = self.unwrap(b);
         
@@ -32,36 +34,69 @@ pub const VirtualMachine = struct {
             @panic("expected i32");
         }
 
-        self.mem[dst] = f(arg1.int, arg2.int);
+        self.set(dst, f(arg1.int, arg2.int));
     }
 
-    fn binary_numeric_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f_int: *const fn(i32, i32) Value, f_float: *const fn(f32, f32) Value) void {
+    fn binary_numeric_op(self: *VirtualMachine, dst: Arg, a: Arg, b: Arg, f_int: *const fn(i32, i32) Value, f_float: *const fn(f32, f32) Value) void {
         const arg1 = self.unwrap(a);
         const arg2 = self.unwrap(b);
         
         if (arg1 == .int and arg2 == .int) {
-            self.mem[dst] = f_int(arg1.int, arg2.int);
+            self.set(dst, f_int(arg1.int, arg2.int));
             return;
         }
         
         const arg1f: f32 = if (arg1==.int) @floatFromInt(arg1.int) else arg1.float;
         const arg2f: f32 = if (arg2==.int) @floatFromInt(arg2.int) else arg2.float;
         
-        self.mem[dst] = f_float(arg1f, arg2f);
+        self.set(dst, f_float(arg1f, arg2f));
     }
 
-    fn binary_generic_op(self: *VirtualMachine, dst: usize, a: Arg, b: Arg, f: *const fn(Value, Value) Value) void {
+    fn binary_generic_op(self: *VirtualMachine, dst: Arg, a: Arg, b: Arg, f: *const fn(Value, Value) Value) void {
         const arg1 = self.unwrap(a);
         const arg2 = self.unwrap(b);
 
-        self.mem[dst] = f(arg1, arg2);
+        self.set(dst, f(arg1, arg2));
     }
 
     fn unwrap(self: *VirtualMachine, a: Arg) Value {
         if (a.kind == .register) {
             return self.mem[a.index];
         }
+        if (a.kind == .deref) {
+            const address = self.mem[a.index];
+            if (address == .ptr) {
+                return self.heap.mem[address.ptr+1].value;
+            }
+            if (address == .subptr) {
+                return self.heap.mem[address.subptr].value;
+            }
+        }
         return self.constants_pool[a.index];
+    }
+    
+    fn set(self: *VirtualMachine, dst: Arg, src: Value) void { 
+        const dst_unwrapped = self.unwrap(dst);
+
+        if (src == .ptr) {
+            self.heap.increment(src.ptr);
+        }
+
+        if (dst.kind == .deref) {
+            if (dst_unwrapped == .ptr) {
+                self.heap.decrement(dst_unwrapped.ptr);
+                self.heap.mem[dst_unwrapped.ptr+1] = .{.value=src};
+            }
+            if (dst_unwrapped == .subptr) {
+                self.heap.mem[dst_unwrapped.subptr] = .{.value=src};
+            }
+        }
+        if (dst.kind == .register) {
+             if (dst_unwrapped == .ptr) {
+                self.heap.decrement(dst_unwrapped.ptr);
+            }
+            self.mem[dst.index] = src;
+        }
     }
 
     pub fn run(self: *VirtualMachine, io: std.Io, stdout: *std.Io.Writer, comptime benchmark: bool) !void {
@@ -84,12 +119,7 @@ pub const VirtualMachine = struct {
                         else => { @panic("unsupported value for printing"); }
                     }
                 },
-                .load => |data| {
-                    const dst = data.dst;
-                    const arg1 = self.unwrap(data.lhs);
-                    
-                    self.mem[dst] = arg1;
-                },
+
                 .log_and => |data| { self.binary_bool_op(data.dst, data.lhs, data.rhs, ops._and); },
                 .log_or => |data| { self.binary_bool_op(data.dst, data.lhs, data.rhs, ops._or); },
                 .log_xor => |data| { self.binary_bool_op(data.dst, data.lhs, data.rhs, ops._xor); },
@@ -109,7 +139,23 @@ pub const VirtualMachine = struct {
                 
                 .eqeq => |data| { self.binary_generic_op(data.dst, data.lhs, data.rhs, ops.eqeq); },
                 .neq => |data| { self.binary_generic_op(data.dst, data.lhs, data.rhs, ops.neq); },
-
+                
+                .load => |data| {
+                    self.set(data.dst, self.unwrap(data.lhs));
+                },
+                .alloc => |data| { 
+                    const size: usize = @intCast(self.unwrap(data.size).int);
+                    self.mem[data.dst.index] = Value{.ptr=try self.heap.alloc(size)};
+                },
+                .lea => |data| {
+                    const boxed_ptr = self.unwrap(data.lhs);
+                    const boxed_offset = self.unwrap(data.rhs);
+                    
+                    const ptr: usize = if (boxed_ptr == .ptr) boxed_ptr.ptr else boxed_ptr.subptr;
+                    const offset: usize = if (boxed_offset == .float) @intFromFloat(@round(boxed_offset.float)) else @intCast(boxed_offset.int);
+                    self.mem[data.dst.index] = Value{.subptr=ptr+1+offset};
+                },
+                
                 .jump => |line| { self.ic = line; continue; },
                 .jumpif => |data| {
                     const flag = self.unwrap(data.lhs);
@@ -139,5 +185,3 @@ pub const VirtualMachine = struct {
         try stdout.print("\nExecution finished ({} ns)\n", .{elapsed.toNanoseconds()});
     }
 };
-
-

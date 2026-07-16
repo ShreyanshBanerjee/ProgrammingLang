@@ -43,14 +43,14 @@ pub fn main(init: std.process.Init) !void {
     };
 
     const code = [_]Op{
-        .{.load   =.{ .dst  =0,      .lhs=CONST(1)              }},
-        .{.load   =.{ .dst  =1,      .lhs=CONST(0)              }},
-        .{.load   =.{ .dst  =2,      .lhs=CONST(1)              }},
-        .{.add    =.{ .dst  =3,      .lhs=REG(1), .rhs=REG(2)   }},
-        .{.load   =.{ .dst  =1,      .lhs=REG(2)                }},
-        .{.load   =.{ .dst  =2,      .lhs=REG(3)                }},
-        .{.add    =.{ .dst  =0,      .lhs=REG(0), .rhs=CONST(1) }},
-        .{.lt     =.{ .dst  =4,      .lhs=REG(0), .rhs=CONST(2) }},
+        .{.load   =.{ .dst  =REG(0), .lhs=CONST(1)              }},
+        .{.load   =.{ .dst  =REG(1), .lhs=CONST(0)              }},
+        .{.load   =.{ .dst  =REG(2), .lhs=CONST(1)              }},
+        .{.add    =.{ .dst  =REG(3), .lhs=REG(1), .rhs=REG(2)   }},
+        .{.load   =.{ .dst  =REG(1), .lhs=REG(2)                }},
+        .{.load   =.{ .dst  =REG(2), .lhs=REG(3)                }},
+        .{.add    =.{ .dst  =REG(0), .lhs=REG(0), .rhs=CONST(1) }},
+        .{.lt     =.{ .dst  =REG(4), .lhs=REG(0), .rhs=CONST(2) }},
         .{.jumpif =.{ .lhs  =REG(4), .line=3                    }},
         .{.print            =REG(2)                             },
         .{.halt             ={}                                 }
