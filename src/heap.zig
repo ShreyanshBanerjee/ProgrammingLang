@@ -119,7 +119,8 @@ pub const Heap = struct{
     }
 
     pub fn decrement(self: *Heap, what: usize) void {
-        self.mem[what].header.refs -= 1; if (self.mem[what].header.refs == 0) {
+        self.mem[what].header.refs -= 1;
+        if (self.mem[what].header.refs == 0) {
             self.dealloc(what);
             _ = self.recombine(self.free.?);
         }

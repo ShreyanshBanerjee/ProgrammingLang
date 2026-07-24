@@ -1,6 +1,6 @@
 //this VM is currently configured to calculate fibonacci numbers
 //modify the number below and run the code!
-const fib_number = 46;
+const fib_number = 8;
 const benchmarking_mode = true;
 
 //--------------------------------------------------------------
@@ -10,6 +10,8 @@ const core = @import("core.zig");
 pub const Value = core.Value;
 pub const Arg = core.Arg;
 pub const Op = core.Op;
+pub const FuncData = core.FuncData;
+
 pub const CONST = core.CONST;
 pub const REG = core.REG;
 
@@ -37,26 +39,48 @@ pub fn main(init: std.process.Init) !void {
     //halt
     
     const const_pool = [_]Value{
-        .{.int=0},
         .{.int=1},
         .{.int=fib_number}
     };
 
+    //const code = [_]Op{
+    //    .{.load   =.{ .dst  =REG(0), .lhs=CONST(1)              }},
+    //    .{.load   =.{ .dst  =REG(1), .lhs=CONST(0)              }},
+    //    .{.load   =.{ .dst  =REG(2), .lhs=CONST(1)              }},
+    //    .{.add    =.{ .dst  =REG(3), .lhs=REG(1), .rhs=REG(2)   }},
+    //    .{.load   =.{ .dst  =REG(1), .lhs=REG(2)                }},
+    //    .{.load   =.{ .dst  =REG(2), .lhs=REG(3)                }},
+    //    .{.add    =.{ .dst  =REG(0), .lhs=REG(0), .rhs=CONST(1) }},
+    //    .{.lt     =.{ .dst  =REG(4), .lhs=REG(0), .rhs=CONST(2) }},
+    //    .{.jumpif =.{ .lhs  =REG(4), .line=3                    }},
+    //    .{.print            =REG(2)                             },
+    //    .{.halt             ={}                                 }
+    //};
+    
     const code = [_]Op{
-        .{.load   =.{ .dst  =REG(0), .lhs=CONST(1)              }},
-        .{.load   =.{ .dst  =REG(1), .lhs=CONST(0)              }},
-        .{.load   =.{ .dst  =REG(2), .lhs=CONST(1)              }},
-        .{.add    =.{ .dst  =REG(3), .lhs=REG(1), .rhs=REG(2)   }},
-        .{.load   =.{ .dst  =REG(1), .lhs=REG(2)                }},
-        .{.load   =.{ .dst  =REG(2), .lhs=REG(3)                }},
-        .{.add    =.{ .dst  =REG(0), .lhs=REG(0), .rhs=CONST(1) }},
-        .{.lt     =.{ .dst  =REG(4), .lhs=REG(0), .rhs=CONST(2) }},
-        .{.jumpif =.{ .lhs  =REG(4), .line=3                    }},
-        .{.print            =REG(2)                             },
-        .{.halt             ={}                                 }
+        .{.load = .{ .dst=REG(0), .lhs=CONST(1)}},
+        .{.call = .{ .func_id=0, .args=[_]?usize{0,null,null}}},
+        .{.print = REG(0)},
+        .{.halt={}},
+        //function:
+        .{.gt = .{.dst=REG(1), .lhs=REG(0), .rhs=CONST(0)}},
+        .{.jumpif = .{.lhs=REG(1), .line=8}},
+        .{.load=.{.dst=REG(0), .lhs=CONST(0)}},
+        .{.ret ={}},
+        .{.sub=.{.dst=REG(0), .lhs=REG(0), .rhs=CONST(0)}},
+        .{.sub=.{.dst=REG(1), .lhs=REG(0), .rhs=CONST(0)}},
+        .{.call = .{.func_id=0, .args=[_]?usize{0,null,null}}},
+        .{.call = .{.func_id=0, .args=[_]?usize{1,null,null}}},
+        .{.add = .{.dst=REG(0), .lhs=REG(0), .rhs=REG(1)}},
+        .{.ret = {}}
+
+    };
+
+    const funcs = [_]FuncData{
+        .{.n_args=1, .n_regs=2, .line_no=4}
     };
     
-    var instance = vm.VirtualMachine.build(&code, &const_pool);
+    var instance = vm.VirtualMachine.build(&code, &const_pool, &funcs, 1);
     try stdout.print("VM: Computing Fibonacci #{d}...\n", .{fib_number});
 
     if (benchmarking_mode) { 

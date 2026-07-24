@@ -1,3 +1,10 @@
+pub const Type = union(enum) {
+    int,
+    float,
+    ptr,
+    nan
+};
+
 pub const Value = union(enum) {
     int: i32,
     float: f32,
@@ -58,6 +65,9 @@ pub const Op = union(enum) {
     jump: usize,
     jumpif: struct { lhs: Arg, line: usize },
     
+    call: struct { func_id: usize, args: [3]?usize },
+    ret: void,
+    
     print: Arg,
     print_ascii: Arg,
     
@@ -73,4 +83,10 @@ pub const VMError = error{
     OutOfHeapSpace,
 
     InternalError
+};
+
+pub const FuncData = struct{
+    n_args: usize,
+    n_regs: usize,
+    line_no: usize
 };
