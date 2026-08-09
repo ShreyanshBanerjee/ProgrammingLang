@@ -1,12 +1,12 @@
 //this VM is currently configured to calculate fibonacci numbers
 //modify the number below and run the code!
-const fib_number = 8;
-const benchmarking_mode = true;
+const fib_number = 30;
+const benchmarking_mode = false;
 
 //--------------------------------------------------------------
 const std = @import("std");
 
-const core = @import("core.zig");
+const core = @import("vm/core.zig");
 pub const Value = core.Value;
 pub const Arg = core.Arg;
 pub const Op = core.Op;
@@ -15,7 +15,7 @@ pub const FuncData = core.FuncData;
 pub const CONST = core.CONST;
 pub const REG = core.REG;
 
-const vm = @import("vm.zig");
+const vm = @import("vm/vm.zig");
 
 pub fn main(init: std.process.Init) !void {
     //initialize stdout
