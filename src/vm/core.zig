@@ -16,7 +16,7 @@ pub const Value = union(enum) {
 pub const ArgKind = enum(u2) {
     register,
     constant,
-    deref
+    dereelsef
 };
 
 pub const Arg = struct {
