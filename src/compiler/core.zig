@@ -4,15 +4,22 @@ pub const Loc = struct {
 };
 
 pub const Literal = union(enum) {
-    INT: i64,
-    FLOAT: f64,
+    NUM: f64,
     LIST: *Literal,
     STR: []const u8
 };
 
+pub const Type = union(enum) {
+    NUM,
+    LIST: *Type,
+    STR,
+    STRUCT: u32
+};
+
 pub const TokenKind = union(enum) {
     IDENT: []const u8,
-    
+    INTERNED: u32,
+
     PLUS: void,
     MINUS: void,
     MULT: void,
@@ -54,10 +61,7 @@ pub const TokenKind = union(enum) {
     CONTINUE: void,
     RETURN: void,
     
-    INT: void,
-    FLOAT: void,
-    STR: void,
-    LIST: void,
+    TYPE: Type,
     LITERAL: Literal,
     INVALID: void
 };

@@ -48,7 +48,7 @@ pub const TokenMapping = [_]struct{[]const u8, TokenKind} {
     .{"continue", TokenKind.CONTINUE},
     .{"return", TokenKind.RETURN},
 
-    .{"int", TokenKind.INT},
+    .{"int", TokenKind.TYPE},
     .{"str", TokenKind.STR},
     .{"float", TokenKind.FLOAT},
     .{"list", TokenKind.LIST},
@@ -226,8 +226,28 @@ pub const Lexer = struct {
         }
         return result;
     }
-};
 
+    pub fn intern(tokens: *std.ArrayList(Token)) !std.StringHashMap(u32) {
+        var ident_mapping: std.StringHashMap(u32) = .init(self.allocator);
+
+        var i = 0;
+        while (i < tokens.*.items.len) : (i+1) {
+            if tokens.*.items[i] != .IDENT { continue; }
+
+            var ident = ident_mapping.get(tokens.*.items[i].IDENT);
+
+            if (ident) |id| {
+                tokens.*.items[i] = .{.INTERNED=id};
+            }
+            else {
+                tokens.*.items[i] = .{.INTERNED=ident_mapping.count()};
+                try ident_mapping.put(ident_mapping.count());
+            }
+        }
+        
+        return ident_mapping;
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
