@@ -37,11 +37,6 @@ pub fn main(init: std.process.Init) !void {
     //jumpif  reg(4) 3
     //print   reg(2)
     //halt
-    
-    const const_pool = [_]Value{
-        .{.int=1},
-        .{.int=fib_number}
-    };
 
     //const code = [_]Op{
     //    .{.load   =.{ .dst  =REG(0), .lhs=CONST(1)              }},
@@ -56,12 +51,27 @@ pub fn main(init: std.process.Init) !void {
     //    .{.print            =REG(2)                             },
     //    .{.halt             ={}                                 }
     //};
+
+    const const_pool = [_]Value{
+        .{.int=0}, // zero
+        .{.int=1}, // one
+        .{.int=20} // stop number
+    };
     
     const code = [_]Op{
-        .{.load = .{ .dst=REG(0), .lhs=CONST(1)}},
-        .{.call = .{ .func_id=0, .args=[_]?usize{0,null,null}}},
-        .{.print = REG(0)},
-        .{.halt={}},
+        .{.load = .{ .dst=REG(0), .lhs=CONST(0)}}, //current number
+        .{.load = .{ .dst=REG(1), .lhs=CONST(0)}}, //sum
+
+        .{.add = .{.dst=REG(1), .lhs=REG(1), .rhs=REG(0)}}, // sum = sum + current number
+        .{.add = .{.dst=REG(0), .lhs=REG(0), .rhs=CONST(1))} // current number = current number + 1
+
+        .{.neq = .{ .dst=REG(2), .lhs=REG(0), .rhs=CONST(2)}, // continue = (current number =/= stop number)
+        .{.jumpif = .{.lhs=REG(2), .line=2}}, //jump to line 2 if continue is true
+        
+        .{.print = REG(1)}, //output the sum
+        .{.halt={}}, // end
+
+    }
         //function:
         .{.gt = .{.dst=REG(1), .lhs=REG(0), .rhs=CONST(0)}},
         .{.jumpif = .{.lhs=REG(1), .line=8}},
