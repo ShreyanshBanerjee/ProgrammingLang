@@ -3,6 +3,7 @@ pub const Loc = struct {
     end: usize,
 };
 
+// zig fmt: off
 pub const Literal = union(enum) {
     NUM: f64,
     LIST: *Literal,
@@ -30,6 +31,7 @@ pub const TokenKind = union(enum) {
     
     EQ: void,
     EQEQ: void,
+    NEQ: void,
     LT: void,
     LTEQ: void,
     GT: void,
@@ -41,6 +43,9 @@ pub const TokenKind = union(enum) {
     RBRACK: void,
     LCURLY: void,
     RCURLY: void,
+    
+    EXCLAMATION: void,
+    QUESTION: void,
     
     COMMA: void,
     COLON: void,
@@ -54,20 +59,34 @@ pub const TokenKind = union(enum) {
     VAR: void,
     CONST: void,
     FUNC: void,
+
     IF: void,
     ELSE: void,
+    AND: void,
+    OR: void,
 
     BREAK: void,
     CONTINUE: void,
     RETURN: void,
     
+    SELF: void,
+
+    NUM: void,
+    LIST: void,
+    STR: void,
+    
+    STRUCT: void,
+
     TYPE: Type,
     LITERAL: Literal,
     INVALID: void
 };
 
-pub const Token = struct {
-    kind: TokenKind,
-    loc: Loc
+pub const CompilationError = error {
+    ExpectedUnaryOp,
+    ExpectedBinaryOp,
+    ExpectedStatementTerminator
 };
 
+// zig fmt: on
+pub const Token = struct { kind: TokenKind, loc: Loc };

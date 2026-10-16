@@ -1,0 +1,275 @@
+const std = @import("std");
+
+const core = @import("core.zig");
+pub const Loc = core.Loc;
+pub const Literal = core.Literal;
+pub const Type = core.Type;
+pub const TokenKind = core.TokenKind;
+pub const Token = core.Token;
+pub const CompilationError = core.CompilationError;
+
+// zig fmt: off
+pub const UnaryOp = enum { NEGATE, NOT, LIFT };
+
+pub const BinaryOp = union(enum) {
+    EQUALS,
+    LESS,
+    GREATER,
+    LESS_EQUALS,
+    GREATER_EQUALS,
+    NOT_EQUALS,
+    ADD,
+    SUBS,
+    MULT,
+    DIV,
+    POWER,
+    MODULO,
+    AND,
+    OR
+};
+
+//rather than having the ASTData be a recursive type,
+//we have it include indices (of type usize) into a list of ASTNode
+//we do this for better cache performance, simplicity, and because it makes freeing easier
+pub const ASTData = union(enum) {
+    Literal: Literal, ListLiteral: usize,
+    RangeLiteral: struct { first: usize, second: ?usize, last: usize, inclusive: bool },
+    Variable: u32,
+    Assignment: struct { id: u32, is_var: bool, type: Type, rhs: usize },
+    Unary: struct { op: UnaryOp, lhs: usize },
+    Binary: struct { op: BinaryOp, lhs: usize, rhs: usize },
+    IndexAccess: struct { collection: usize, index: usize },
+    If: struct { 
+        if_block: struct { cond: usize, body: std.ArrayList(usize) },
+        else_ifs: ?std.ArrayList(struct { cond: usize, body: std.ArrayList(usize) }),
+        else_block: ?std.ArrayList(usize)
+    },
+    While: struct { cond: usize, code: std.ArrayList(usize) },
+    For: struct { collection: usize, code: std.ArrayList(usize) },
+    Block: std.ArrayList(usize),
+    Break: void,
+    Continue: void,
+    Function: struct { id: u32, inputs: std.ArrayList(struct { id: u32, type: Type }), output: Type, code: std.ArrayList(usize) },
+    Call: struct { id: u32, inputs: std.ArrayList(usize) },
+    StructDef: struct {
+        id: u32,
+        fields: std.ArrayList(struct { id: u32, type: Type }),
+        methods: std.ArrayList(
+            struct { id: u32, is_static: bool, inputs: std.ArrayList(struct { id: u32, type: Type }),
+            output: Type, code: std.ArrayList(usize) }
+        )
+    },
+    FieldAccess: struct { object: usize, field_id: u32 },
+    MethodCall: struct { object: usize, id: u32, is_static: bool, inputs: std.ArrayList(usize) },
+    StructInit: struct { id: u32, fields: std.ArrayList(struct { id: u32, pair: struct {name: u32, val:std.ArrayList(usize)} }) },
+    Return: ?usize
+};
+
+// zig fmt: on
+pub const ASTNode = struct {
+    data: ASTData,
+    loc: Loc,
+
+    pub fn new(k: ASTData, l: Loc) ASTNode {
+        return .{ .data = k, .loc = l };
+    }
+};
+
+pub const Ast = struct {
+    code: std.ArrayList(usize), //again, we store indices instead of usize
+    nodes: std.ArrayList(ASTNode),
+    pub fn deinit(self: *Ast) void {
+        self.code.deinit();
+
+        var i = 0;
+        while (i < self.nodes.items.len()) : (i += 1) {
+            switch (self.nodes.items[i].data) {
+                .If => |*v| {
+                    v.*.if_block.body.deinit();
+                    if (v.*.else_ifs) {
+                        v.*.?.else_ifs.deinit();
+                    }
+                    if (v.*.else_block) {
+                        v.*.?.else_block.deinit();
+                    }
+                },
+                .Block => |*v| {
+                    v.*.deinit();
+                },
+                .StructInit => |*v| {
+                    v.*.fields.deinit();
+                },
+                .StructDef => |*v| {
+                    v.*.fields.deinit();
+
+                    var k = 0;
+                    while (k < v.*.methods.len()) : (k += 1) {
+                        v.*.methods.items[k].inputs.deinit();
+                        v.*.methods.items[k].code.deinit();
+                    }
+                    v.*.methods.deinit();
+                },
+                inline else => |*v| {
+                    if (@hasField(@TypeOf(v.*), "code")) {
+                        v.*.code.deinit();
+                    }
+                    if (@hasField(@TypeOf(v.*), "inputs")) {
+                        v.*.inputs.deinit();
+                    }
+                },
+            }
+        }
+    }
+};
+
+pub const ASTBuilder = struct {
+    tokens: std.ArrayList(Token),
+    index: usize,
+    result: Ast,
+
+    pub fn build(tokens: std.ArrayList(Token), allocator: std.mem.Allocator) ASTBuilder {
+        return ASTBuilder{ .tokens = tokens, .index = 0, .result = Ast{ .code = .init(allocator), .nodes = .init(allocator) } };
+    }
+
+    pub fn peek(self: ASTBuilder) ?Token {
+        if (self.index >= self.tokens.items.len()) {
+            return null;
+        }
+        return self.tokens.items[self.index];
+    }
+
+    pub fn next(self: *ASTBuilder) ?Token {
+        if (self.index >= self.tokens.items.len()) {
+            return null;
+        }
+
+        defer self.index += 1;
+        return self.tokens.items[self.index];
+    }
+
+    pub fn binding_power(t: BinaryOp) struct { u8, u8 } {
+        return switch (t.kind) {
+            .POWER => .{ 70, 69 },
+            .MULT, .MODULO, .DIV => .{ 60, 61 },
+            .ADD, .SUBS => .{ 50, 51 },
+
+            .LESS, .LESS_EQUALS, .GREATER_EQUALS, .GREATER => .{ 40, 41 },
+            .EQUALS, .NOT_EQUALS => .{ 30, 31 },
+            .AND => .{ 20, 21 },
+            .OR => .{ 10, 11 },
+            else => .{ 999, 999 },
+        };
+    }
+
+    pub fn prefix_binding_power(t: Token) u32 {
+        return switch (t.kind) {
+            .CARET => 110,
+            .MINUS, .EXCLAMATION => 100,
+            else => unreachable,
+        };
+    }
+
+    pub fn add_tok(self: *ASTBuilder, a: ASTNode) usize {
+        defer self.result.nodes.append(a);
+        return self.result.nodes.len();
+    }
+
+    pub fn nud(self: *ASTBuilder, allocator: std.StaticStringMapWithEql) !usize {
+        if (self.take()) |t| {
+            switch (t.kind) {
+                .INTERN => |v| return self.add_tok(ASTNode.new(.{ .Variable = v }, t.loc)),
+                .LITERAL => |v| return self.add_tok(ASTNode.new(.{ .Literal = v }, t.loc)),
+                .LPAREN => {
+                    defer self.next().kind.expect(TokenKind.RPAREN);
+                    return self.pratt_parse(0);
+                },
+                .CARET => {
+                    const operand = self.parse_expression(ASTBuilder.prefix_binding_power(t.kind));
+                    return self.add_tok(ASTNode.new(.{ .op = UnaryOp.Caret, .lhs = operand }));
+                },
+                .MINUS => {
+                    const operand = self.parse_expression(ASTBuilder.prefix_binding_power(t.kind));
+                    return self.add_tok(ASTNode.new(.{ .op = UnaryOp.Caret, .lhs = operand }));
+                },
+                .IF => {
+                    self.next().kind.expect(TokenKind.LCURLY);
+                    const condition = self.parse_expression(0);
+                    self.next().kind.expect(TokenKind.RCURLY);
+                },
+
+                else => {
+                    unreachable;
+                },
+            }
+        }
+        return CompilationError.ExpectedUnaryOp;
+    }
+
+    pub fn get_binary_op(self: *ASTBuilder) BinaryOp {
+        return switch (self.next().?.kind) {
+            .EQEQ => BinaryOp.EQUALS,
+            .NEQ => BinaryOp.NOT_EQUALS,
+            .LT => BinaryOp.LESS,
+            .GT => BinaryOp.GREATER,
+            .LTEQ => BinaryOp.LESS_EQUALS,
+            .GTEQ => BinaryOp.GREATER_EQUALS,
+            .PLUS => BinaryOp.ADD,
+            .MINUS => BinaryOp.SUBS,
+            .SLASH => BinaryOp.DIV,
+            .MULT => BinaryOp.MULT,
+            .MULTMULT => BinaryOp.POWER,
+            .MODULO => BinaryOp.MODULO,
+            .AND => BinaryOp.AND,
+            .OR => BinaryOp.OR,
+            else => CompilationError.ExpectedBinaryOp,
+        };
+    }
+
+    pub fn parse_expression(self: *ASTBuilder, right_bp: u8) usize {
+        var lhs = self.nud().?;
+
+        while (true) {
+            const next_tok = self.peek().? orelse break;
+            if (right_bp >= binding_power(next_tok).@"0") {
+                break;
+            }
+
+            const current_op = self.get_binary_op();
+            const current_bp = ASTBuilder.binding_power(current_op).@"1";
+
+            // zig fmt: off
+            lhs = self.add_tok(
+                ASTNode.new(
+                    .{ .op = current_op, .lhs = lhs, .rhs = self.parse_expression(current_bp)}
+                )
+            );
+            // zig fmt: on
+        }
+
+        return lhs;
+    }
+
+    pub fn parse_block(self: *ASTBuilder, allocator: std.mem.Allocator) !std.ArrayList(usize) {
+        var result = std.ArrayList(i32).init(allocator);
+
+        while (self.peek().kind != TokenKind.RCURLY) {
+            result.append(parse_expression(self, 0));
+
+            if (result.peek().kind == TokenKind.SEMICOLON) {
+                self.next().expect(TokenKind.SEMICOLON);
+                continue;
+            }
+            if (result.peek().kind == TokenKind.RCURLY) {
+                break;
+            }
+
+            return CompilationError.ExpectedStatementTerminator;
+        }
+
+        self.next().expect(TokenKind.RCURLY);
+
+        return result;
+    }
+
+    pub fn run(self: *ASTBuilder, allocator: std.mem.Allocator) Ast {}
+};

@@ -37,68 +37,46 @@ pub fn main(init: std.process.Init) !void {
     //jumpif  reg(4) 3
     //print   reg(2)
     //halt
-    
     const const_pool = [_]Value{
-        .{.int=1},
-        .{.int=fib_number}
+        .{ .int = 0 }, // zero
+        .{ .int = 1 }, // one
+        .{ .int = 20 }, // stop number
     };
 
-    //const code = [_]Op{
-    //    .{.load   =.{ .dst  =REG(0), .lhs=CONST(1)              }},
-    //    .{.load   =.{ .dst  =REG(1), .lhs=CONST(0)              }},
-    //    .{.load   =.{ .dst  =REG(2), .lhs=CONST(1)              }},
-    //    .{.add    =.{ .dst  =REG(3), .lhs=REG(1), .rhs=REG(2)   }},
-    //    .{.load   =.{ .dst  =REG(1), .lhs=REG(2)                }},
-    //    .{.load   =.{ .dst  =REG(2), .lhs=REG(3)                }},
-    //    .{.add    =.{ .dst  =REG(0), .lhs=REG(0), .rhs=CONST(1) }},
-    //    .{.lt     =.{ .dst  =REG(4), .lhs=REG(0), .rhs=CONST(2) }},
-    //    .{.jumpif =.{ .lhs  =REG(4), .line=3                    }},
-    //    .{.print            =REG(2)                             },
-    //    .{.halt             ={}                                 }
-    //};
-    
     const code = [_]Op{
-        .{.load = .{ .dst=REG(0), .lhs=CONST(1)}},
-        .{.call = .{ .func_id=0, .args=[_]?usize{0,null,null}}},
-        .{.print = REG(0)},
-        .{.halt={}},
-        //function:
-        .{.gt = .{.dst=REG(1), .lhs=REG(0), .rhs=CONST(0)}},
-        .{.jumpif = .{.lhs=REG(1), .line=8}},
-        .{.load=.{.dst=REG(0), .lhs=CONST(0)}},
-        .{.ret ={}},
-        .{.sub=.{.dst=REG(0), .lhs=REG(0), .rhs=CONST(0)}},
-        .{.sub=.{.dst=REG(1), .lhs=REG(0), .rhs=CONST(0)}},
-        .{.call = .{.func_id=0, .args=[_]?usize{0,null,null}}},
-        .{.call = .{.func_id=0, .args=[_]?usize{1,null,null}}},
-        .{.add = .{.dst=REG(0), .lhs=REG(0), .rhs=REG(1)}},
-        .{.ret = {}}
+        .{ .load = .{ .dst = REG(0), .lhs = CONST(0) } }, //current number
+        .{ .load = .{ .dst = REG(1), .lhs = CONST(0) } }, //sum
 
+        .{ .add = .{ .dst = REG(1), .lhs = REG(1), .rhs = REG(0) } }, // sum = sum + current number
+        .{ .add = .{ .dst = REG(0), .lhs = REG(0), .rhs = CONST(1) } }, // current number = current number + 1
+
+        .{ .neq = .{ .dst = REG(2), .lhs = REG(0), .rhs = CONST(2) } }, // continue = (current number =/= stop number)
+        .{ .jumpif = .{ .lhs = REG(2), .line = 2 } }, //jump to line 2 if continue is true
+
+        .{ .print = REG(1) }, //output the sum
+        .{ .halt = {} }, // end
     };
 
-    const funcs = [_]FuncData{
-        .{.n_args=1, .n_regs=2, .line_no=4}
-    };
-    
-    var instance = vm.VirtualMachine.build(&code, &const_pool, &funcs, 1);
-    try stdout.print("VM: Computing Fibonacci #{d}...\n", .{fib_number});
+    const funcs = [_]FuncData{.{ .n_args = 1, .n_regs = 2, .line_no = 4 }};
 
-    if (benchmarking_mode) { 
+    var instance = vm.VirtualMachine.build(&code, &const_pool, &funcs, 3);
+    try stdout.print("VM: Computing Sum of 1-20...\n", .{});
+
+    if (benchmarking_mode) {
         try stdout.print("VM: BENCHMARK - 1mil iters", .{});
-        
+
         //warmup
         for (0..1000) |_| {
             try instance.run(io, stdout, true);
-        } 
+        }
 
         const start_time = std.Io.Clock.awake.now(io);
         for (0..1000000) |_| {
             try instance.run(io, stdout, true);
         }
         const elapsed = start_time.untilNow(io, std.Io.Clock.awake);
-        try stdout.print("\nExecution finished ({} ns)\n", .{elapsed.toNanoseconds()}); 
-    }
-    else {
+        try stdout.print("\nExecution finished ({} ns)\n", .{elapsed.toNanoseconds()});
+    } else {
         try instance.run(io, stdout, false);
     }
     try stdout.flush();

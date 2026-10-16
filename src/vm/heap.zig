@@ -7,21 +7,19 @@ pub const Op = core.Op;
 pub const vmerr = core.VMError;
 
 const MemorySlot = union(enum) {
-    header: struct{ size: usize, refs: usize },
-    free: struct{ size: usize, next: ?usize },
+    header: struct { size: usize, refs: usize },
+    free: struct { size: usize, next: ?usize },
     value: Value,
 };
 
-pub const Heap = struct{
-    mem: [256]MemorySlot, free: ?usize,
+pub const Heap = struct {
+    mem: [256]MemorySlot,
+    free: ?usize,
 
-    pub fn build() Heap { 
-        var h = Heap {
-            .mem = [_]MemorySlot{ .{.value=Value{ .nan={} }} } ** 256,
-            .free = 0
-        };
+    pub fn build() Heap {
+        var h = Heap{ .mem = @splat(.{ .value = Value{ .nan = {} } }), .free = 0 };
 
-        h.mem[0] = MemorySlot{ .free=.{ .size=15, .next=null } };
+        h.mem[0] = MemorySlot{ .free = .{ .size = 15, .next = null } };
 
         return h;
     }
@@ -31,30 +29,30 @@ pub const Heap = struct{
 
         while (child.*) |i| {
             const node = self.mem[i];
-            
+
             if (node != .free) {
                 return vmerr.InternalError;
             }
-            
-            if (node.free.size == bits+1) {
+
+            if (node.free.size == bits + 1) {
                 child.* = node.free.next;
 
-                self.mem[i] = .{ .header=.{ .size=bits, .refs=1 } };
+                self.mem[i] = .{ .header = .{ .size = bits, .refs = 1 } };
 
                 return i;
             }
 
-            if (node.free.size > bits+1) {
+            if (node.free.size > bits + 1) {
                 child.* = child.*.? + bits + 1;
-                
-                self.mem[child.*.?] = MemorySlot { .free=.{ .size=(self.mem[i].free.size - 1 - bits), .next=self.mem[i].free.next } };
-                
-                self.mem[i] = MemorySlot{ .header=.{ .size=bits, .refs=1 } };
+
+                self.mem[child.*.?] = MemorySlot{ .free = .{ .size = (self.mem[i].free.size - 1 - bits), .next = self.mem[i].free.next } };
+
+                self.mem[i] = MemorySlot{ .header = .{ .size = bits, .refs = 1 } };
 
                 return i;
             }
         }
-        
+
         return vmerr.OutOfHeapSpace;
     }
 
@@ -62,9 +60,8 @@ pub const Heap = struct{
         var child = &self.free;
         const to_free = &self.mem[ptr];
 
-        
         if (child.* != null and child.*.? > ptr) {
-            to_free.* = MemorySlot{ .free=.{ .size=to_free.*.header.size, .next=child.* } };
+            to_free.* = MemorySlot{ .free = .{ .size = to_free.*.header.size, .next = child.* } };
             child.* = ptr;
 
             return;
@@ -76,16 +73,15 @@ pub const Heap = struct{
             if (node != .free) {
                 @panic("heap state invalid");
             }
-            
+
             if (node.free.next == null or node.free.next.? > ptr) {
-                to_free.* = MemorySlot{ .free=.{ .size=to_free.*.header.size, .next=node.free.next } };
+                to_free.* = MemorySlot{ .free = .{ .size = to_free.*.header.size, .next = node.free.next } };
             }
 
             child = &node.free.next;
         }
-        
-        @panic("tried to dealloc invalid ptr");
 
+        @panic("tried to dealloc invalid ptr");
     }
 
     pub fn recombine(self: *Heap, i: usize) usize {
@@ -100,17 +96,12 @@ pub const Heap = struct{
         }
 
         if (i + 1 + c_block.size == c_block.next.?) {
-            self.mem[i] = MemorySlot { 
-                .free=.{
-                    .size=(c_block.size + self.mem[c_block.next.?].free.size + 1),
-                    .next=self.mem[c_block.next.?].free.next
-                }
-            };
+            self.mem[i] = MemorySlot{ .free = .{ .size = (c_block.size + self.mem[c_block.next.?].free.size + 1), .next = self.mem[c_block.next.?].free.next } };
             return self.recombine(i);
         }
 
         self.mem[i].free.next = self.recombine(c_block.next.?);
-        
+
         return i;
     }
 
@@ -127,10 +118,9 @@ pub const Heap = struct{
     }
 
     pub fn pretty_print(self: *Heap) void {
-        
         std.debug.print("Heap Object:\n", .{});
         for (self.mem) |obj| {
             std.debug.print("{any}\n", .{obj});
         }
- }
+    }
 };
